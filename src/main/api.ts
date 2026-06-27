@@ -88,10 +88,11 @@ async function withThrottleRetry<T>(fn: () => Promise<T>, retries = 8): Promise<
       return await fn()
     } catch (e: any) {
       const msg = String(e?.message || e)
-      const throttled = /too many attempts|rate ?limit|429/i.test(msg)
-      if (!throttled || attempt >= retries) throw e
+      // bị chặn: quá nhiều request / rate limit / 429 / 403 / forbidden / blocked
+      const blocked = /too many attempts|rate ?limit|429|403|forbidden|blocked|captcha/i.test(msg)
+      if (!blocked || attempt >= retries) throw e
       if (_rotateHandler) {
-        try { await _rotateHandler() } catch { /* đổi IP lỗi -> vẫn đợi rồi thử lại */ }
+        try { await _rotateHandler() } catch { /* đổi IP/device lỗi -> vẫn đợi rồi thử lại */ }
       }
       await sleep(delay)
       delay = Math.min(delay * 2, 30000)
