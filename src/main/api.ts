@@ -69,6 +69,7 @@ import { ProxyAgent, setGlobalDispatcher, getGlobalDispatcher } from 'undici'
 
 const _defaultDispatcher = getGlobalDispatcher()
 let _rotateHandler: (() => Promise<void>) | null = null
+let _rotateInProgress: Promise<void> | null = null
 
 /** Bật/tắt proxy cho toàn bộ request (rỗng = tắt). */
 export function setProxy(url?: string): void {
@@ -78,9 +79,10 @@ export function setProxy(url?: string): void {
 /** Đặt hàm đổi IP — gọi khi bị chặn (vd tmproxy get-new-proxy). */
 export function setRotateHandler(fn: (() => Promise<void>) | null): void {
   _rotateHandler = fn
+  _rotateInProgress = null
 }
 
-/** Thử lại khi bị Go2Joy chặn ("Too many attempts" / 429): đổi IP (nếu có) + đợi tăng dần. */
+/** Thử lại khi bị Go2Joy chặn hoặc lỗi mạng: đổi IP (nếu có) + đợi tăng dần. */
 async function withThrottleRetry<T>(fn: () => Promise<T>, retries = 8): Promise<T> {
   let delay = 2000
   for (let attempt = 0; ; attempt++) {
@@ -88,11 +90,19 @@ async function withThrottleRetry<T>(fn: () => Promise<T>, retries = 8): Promise<
       return await fn()
     } catch (e: any) {
       const msg = String(e?.message || e)
-      // bị chặn: quá nhiều request / rate limit / 429 / 403 / forbidden / blocked
       const blocked = /too many attempts|rate ?limit|429|403|forbidden|blocked|captcha/i.test(msg)
-      if (!blocked || attempt >= retries) throw e
+      // fetch failed / ECONNREFUSED / ETIMEDOUT / ECONNRESET = lỗi mạng tạm thời
+      const networkErr = /fetch failed|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|ECONNRESET|socket hang up/i.test(msg)
+      if ((!blocked && !networkErr) || attempt >= retries) throw e
       if (_rotateHandler) {
-        try { await _rotateHandler() } catch { /* đổi IP/device lỗi -> vẫn đợi rồi thử lại */ }
+        // mutex: chỉ rotate 1 lần cùng lúc, các request khác chờ chung kết quả
+        if (!_rotateInProgress) {
+          _rotateInProgress = Promise.resolve()
+            .then(() => _rotateHandler!())
+            .catch(() => { /* rotate lỗi -> vẫn tiếp tục chờ rồi thử lại */ })
+            .finally(() => { _rotateInProgress = null })
+        }
+        await _rotateInProgress
       }
       await sleep(delay)
       delay = Math.min(delay * 2, 30000)
@@ -214,10 +224,11 @@ interface IterOpts {
   shouldStop?: () => boolean
   delay?: number
   maxPages?: number
+  concurrency?: number
 }
 
 export async function iterHotelList(search: ListSearch, opts: IterOpts): Promise<void> {
-  const { onHotel, onProgress, shouldStop, delay = 400, maxPages = 0 } = opts
+  const { onHotel, onProgress, shouldStop, delay = 300, maxPages = 0, concurrency = 5 } = opts
   let page = 1
   let total: number | null = null
   let fetched = 0
@@ -229,12 +240,17 @@ export async function iterHotelList(search: ListSearch, opts: IterOpts): Promise
     const batch: any[] = data.hotelList || []
     const meta = data.meta || {}
     if (total === null) total = meta.total || 0
-    for (const h of batch) {
+    // xử lý song song theo batch để tăng tốc
+    for (let i = 0; i < batch.length; i += concurrency) {
       if (shouldStop?.()) return
-      fetched += 1
-      await onHotel(h)
+      const chunk = batch.slice(i, i + concurrency)
+      await Promise.all(chunk.map(async (h) => {
+        if (shouldStop?.()) return
+        fetched += 1
+        await onHotel(h)
+      }))
+      onProgress?.(fetched, total)
     }
-    onProgress?.(fetched, total)
     if (!meta.hasNext || batch.length === 0) return
     if (maxPages && page >= maxPages) return
     page += 1

@@ -118,22 +118,24 @@ ipcMain.on('scrape:start', async (evt, params: SearchParams) => {
           limit: 100,
         },
         {
-          delay: 700,
+          delay: 300,
           maxPages: params.maxPages,
           shouldStop: () => stopFlag,
           onProgress: (fetched, total) => send('scrape:progress', { label, fetched, total }),
           onHotel: async (hotel) => {
             if (stopFlag) return
-            const detail = params.fetchDetail ? await api.getHotelDetail(hotel.sn) : {}
             const ctx = { provinceName: params.provinceName, bookingType: bt, combo }
 
-            // lấy danh sách phòng -> mỗi phòng 1 dòng (đúng template)
-            const rooms = await api.getRoomTypeList(hotel.sn, bt, {
-              startDate: params.checkinDate,
-              startTime: params.startTime,
-              endDate: params.checkinDate,
-              endTime: params.endTime,
-            })
+            // gọi song song để giảm thời gian chờ
+            const [detail, rooms] = await Promise.all([
+              params.fetchDetail ? api.getHotelDetail(hotel.sn) : Promise.resolve({}),
+              api.getRoomTypeList(hotel.sn, bt, {
+                startDate: params.checkinDate,
+                startTime: params.startTime,
+                endDate: params.checkinDate,
+                endTime: params.endTime,
+              }),
+            ])
 
             if (rooms.length) {
               for (const room of rooms) {

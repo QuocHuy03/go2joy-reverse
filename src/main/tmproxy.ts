@@ -7,7 +7,9 @@ async function call(path: string, body: Record<string, unknown>): Promise<any> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   })
-  return res.json()
+  if (!res.ok) throw new Error(`tmproxy HTTP ${res.status}`)
+  const text = await res.text()
+  try { return JSON.parse(text) } catch { throw new Error(`tmproxy response không phải JSON: ${text.slice(0, 100)}`) }
 }
 
 /** data.https = "ip:port" (+ username/password nếu auth user/pass). */
