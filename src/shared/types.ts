@@ -21,6 +21,10 @@ export interface SearchParams {
   sort: number
   maxPages: number
   fetchDetail: boolean
+  proxyMode: 'none' | 'manual' | 'tmproxy'
+  proxyUrl: string
+  proxyApiKey: string
+  fakeDevice: boolean
 }
 
 /** Một dòng kết quả khớp cấu trúc cột Google Sheet. */

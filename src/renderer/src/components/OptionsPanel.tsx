@@ -34,6 +34,10 @@ export function OptionsPanel({
   const [maxPrice, setMaxPrice] = useState(10000000)
   const [maxPages, setMaxPages] = useState(0)
   const [fetchDetail, setFetchDetail] = useState(true)
+  const [proxyMode, setProxyMode] = useState<'none' | 'manual' | 'tmproxy'>('none')
+  const [proxyUrl, setProxyUrl] = useState('')
+  const [proxyApiKey, setProxyApiKey] = useState('')
+  const [fakeDevice, setFakeDevice] = useState(true)
 
   // chọn Hà Nội khi danh sách tỉnh về (nếu có)
   useMemo(() => {
@@ -47,7 +51,7 @@ export function OptionsPanel({
   // lưu/nạp tuỳ chọn tìm kiếm vào SQLite (không lưu ngày để luôn mới)
   usePersistedSection(
     'search',
-    { provinceSn, bt, startTime, duration, sort, minPrice, maxPrice, maxPages, fetchDetail },
+    { provinceSn, bt, startTime, duration, sort, minPrice, maxPrice, maxPages, fetchDetail, proxyMode, proxyUrl, proxyApiKey, fakeDevice },
     (s) => {
       if (typeof s.provinceSn === 'number') setProvinceSn(s.provinceSn)
       if (s.bt && typeof s.bt === 'object') setBt(s.bt as Record<BookingType, boolean>)
@@ -58,6 +62,10 @@ export function OptionsPanel({
       if (typeof s.maxPrice === 'number' && s.maxPrice > 0) setMaxPrice(s.maxPrice)
       if (typeof s.maxPages === 'number') setMaxPages(s.maxPages)
       if (typeof s.fetchDetail === 'boolean') setFetchDetail(s.fetchDetail)
+      if (s.proxyMode === 'none' || s.proxyMode === 'manual' || s.proxyMode === 'tmproxy') setProxyMode(s.proxyMode)
+      if (typeof s.proxyUrl === 'string') setProxyUrl(s.proxyUrl)
+      if (typeof s.proxyApiKey === 'string') setProxyApiKey(s.proxyApiKey)
+      if (typeof s.fakeDevice === 'boolean') setFakeDevice(s.fakeDevice)
     },
   )
 
@@ -87,6 +95,7 @@ export function OptionsPanel({
       endTime: `${String(endH).padStart(2, '0')}:00`,
       durationHours: duration,
       minPrice: safeMin, maxPrice: safeMax, sort, maxPages, fetchDetail,
+      proxyMode, proxyUrl, proxyApiKey, fakeDevice,
     })
   }
 
@@ -173,6 +182,34 @@ export function OptionsPanel({
         <input type="checkbox" checked={fetchDetail}
           onChange={(e) => setFetchDetail(e.target.checked)} />
         <span>Lấy chi tiết (tiện ích, giới thiệu, chính sách, sđt) — chậm hơn</span>
+      </label>
+
+      <span className="section-label">Proxy (tránh bị chặn)</span>
+      <label className="field">
+        <span>Chế độ proxy</span>
+        <select value={proxyMode} onChange={(e) => setProxyMode(e.target.value as typeof proxyMode)}>
+          <option value="none">Không dùng</option>
+          <option value="manual">Proxy thủ công (http://user:pass@ip:port)</option>
+          <option value="tmproxy">tmproxy (xoay IP tự động)</option>
+        </select>
+      </label>
+      {proxyMode === 'manual' && (
+        <label className="field">
+          <span>Proxy URL</span>
+          <input type="text" placeholder="http://user:pass@ip:port"
+            value={proxyUrl} onChange={(e) => setProxyUrl(e.target.value)} />
+        </label>
+      )}
+      {proxyMode === 'tmproxy' && (
+        <label className="field">
+          <span>tmproxy API key</span>
+          <input type="text" placeholder="dán api_key tmproxy"
+            value={proxyApiKey} onChange={(e) => setProxyApiKey(e.target.value)} />
+        </label>
+      )}
+      <label className="check-row">
+        <input type="checkbox" checked={fakeDevice} onChange={(e) => setFakeDevice(e.target.checked)} />
+        <span>Fake device (đổi device-encode + user-agent; tự đổi khi bị chặn)</span>
       </label>
 
       <span className="section-label">Hành động</span>

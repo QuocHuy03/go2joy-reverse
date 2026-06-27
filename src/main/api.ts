@@ -1,4 +1,5 @@
 // Client API Go2Joy (chạy ở main process).
+import { randomUUID } from 'node:crypto'
 import { BOOKING_TYPES } from '../shared/constants'
 import type { BookingType, HotelRow, Province } from '../shared/types'
 
@@ -6,18 +7,49 @@ const API_BASE = 'https://api.go2joy.vn/api/v1'
 const IMAGE_BASE = 'https://s3.go2joy.vn'
 const IMAGE_WIDTH = '1000w'
 
-const HEADERS: Record<string, string> = {
-  accept: 'application/json',
-  'accept-language': 'en-US,en;q=0.9,vi;q=0.8',
-  'content-type': 'application/json',
-  'device-encode': '466c1123-a094-47bd-945e-27a560a93177',
-  localization: 'vi',
-  origin: 'https://go2joy.vn',
-  referer: 'https://go2joy.vn/',
-  requester: 'web-app',
-  'user-agent':
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-    '(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+// ----- Fake device: đổi device-encode (UUID) + user-agent để tránh bị nhận diện -----
+const CHROME_VERSIONS = ['147.0.0.0', '148.0.0.0', '149.0.0.0', '150.0.0.0', '151.0.0.0']
+const PLATFORMS = [
+  'Windows NT 10.0; Win64; x64',
+  'Windows NT 11.0; Win64; x64',
+  'Macintosh; Intel Mac OS X 10_15_7',
+]
+const rnd = <T>(a: T[]): T => a[Math.floor(Math.random() * a.length)]
+
+let _deviceEncode = '466c1123-a094-47bd-945e-27a560a93177'
+let _userAgent =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36'
+let _fakeOn = false
+
+/** Sinh device-encode + user-agent mới (ngẫu nhiên). */
+export function randomizeDevice(): void {
+  _deviceEncode = randomUUID()
+  const ver = rnd(CHROME_VERSIONS)
+  _userAgent = `Mozilla/5.0 (${rnd(PLATFORMS)}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${ver} Safari/537.36`
+}
+
+/** Bật/tắt fake device (bật thì randomize ngay). */
+export function setFakeDevice(on: boolean): void {
+  _fakeOn = on
+  if (on) randomizeDevice()
+}
+
+function headers(): Record<string, string> {
+  const major = _userAgent.match(/Chrome\/(\d+)/)?.[1] || '149'
+  return {
+    accept: 'application/json',
+    'accept-language': 'en-US,en;q=0.9,vi;q=0.8',
+    'content-type': 'application/json',
+    'device-encode': _deviceEncode,
+    localization: 'vi',
+    origin: 'https://go2joy.vn',
+    referer: 'https://go2joy.vn/',
+    requester: 'web-app',
+    'sec-ch-ua': `"Google Chrome";v="${major}", "Chromium";v="${major}", "Not)A;Brand";v="24"`,
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': _userAgent.includes('Mac') ? '"macOS"' : '"Windows"',
+    'user-agent': _userAgent,
+  }
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -32,22 +64,61 @@ async function errBody(res: Response, path: string): Promise<Error> {
   return new Error(`HTTP ${res.status} @ ${path}${detail ? ' — ' + String(detail).slice(0, 200) : ''}`)
 }
 
+// ----- Proxy (undici) -----
+import { ProxyAgent, setGlobalDispatcher, getGlobalDispatcher } from 'undici'
+
+const _defaultDispatcher = getGlobalDispatcher()
+let _rotateHandler: (() => Promise<void>) | null = null
+
+/** Bật/tắt proxy cho toàn bộ request (rỗng = tắt). */
+export function setProxy(url?: string): void {
+  setGlobalDispatcher(url ? new ProxyAgent(url) : _defaultDispatcher)
+}
+
+/** Đặt hàm đổi IP — gọi khi bị chặn (vd tmproxy get-new-proxy). */
+export function setRotateHandler(fn: (() => Promise<void>) | null): void {
+  _rotateHandler = fn
+}
+
+/** Thử lại khi bị Go2Joy chặn ("Too many attempts" / 429): đổi IP (nếu có) + đợi tăng dần. */
+async function withThrottleRetry<T>(fn: () => Promise<T>, retries = 8): Promise<T> {
+  let delay = 2000
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn()
+    } catch (e: any) {
+      const msg = String(e?.message || e)
+      const throttled = /too many attempts|rate ?limit|429/i.test(msg)
+      if (!throttled || attempt >= retries) throw e
+      if (_rotateHandler) {
+        try { await _rotateHandler() } catch { /* đổi IP lỗi -> vẫn đợi rồi thử lại */ }
+      }
+      await sleep(delay)
+      delay = Math.min(delay * 2, 30000)
+    }
+  }
+}
+
 async function apiGet(path: string, params?: Record<string, string | number>): Promise<any> {
-  const url = new URL(`${API_BASE}/${path}`)
-  if (params) for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v))
-  const res = await fetch(url, { headers: HEADERS })
-  if (!res.ok) throw await errBody(res, path)
-  return res.json()
+  return withThrottleRetry(async () => {
+    const url = new URL(`${API_BASE}/${path}`)
+    if (params) for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v))
+    const res = await fetch(url, { headers: headers() })
+    if (!res.ok) throw await errBody(res, path)
+    return res.json()
+  })
 }
 
 async function apiPost(path: string, body: unknown): Promise<any> {
-  const res = await fetch(`${API_BASE}/${path}`, {
-    method: 'POST',
-    headers: HEADERS,
-    body: JSON.stringify(body),
+  return withThrottleRetry(async () => {
+    const res = await fetch(`${API_BASE}/${path}`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) throw await errBody(res, path)
+    return res.json()
   })
-  if (!res.ok) throw await errBody(res, path)
-  return res.json()
 }
 
 function stripHtml(s?: string): string {

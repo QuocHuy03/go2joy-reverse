@@ -5,6 +5,7 @@ import ExcelJS from 'exceljs'
 import * as api from './api'
 import { runGoogle } from './google'
 import { loginOAuth, getOAuthStatus } from './oauth'
+import { acquireProxy, rotateProxy } from './tmproxy'
 import { initStore, getSection, setSection } from './store'
 import { BOOKING_TYPES, BOOKING_COLORS, SHEET_COLUMNS } from '../shared/constants'
 import type { ExportPayload, GoogleConfig, SearchParams } from '../shared/types'
@@ -78,6 +79,27 @@ ipcMain.on('scrape:start', async (evt, params: SearchParams) => {
   const send = (ch: string, payload?: unknown) => evt.sender.send(ch, payload)
   let count = 0
   try {
+    // ----- fake device (device-encode + user-agent) -----
+    api.setFakeDevice(!!params.fakeDevice)
+
+    // ----- cấu hình proxy -----
+    api.setRotateHandler(null)
+    if (params.proxyMode === 'manual' && params.proxyUrl.trim()) {
+      api.setProxy(params.proxyUrl.trim())
+    } else if (params.proxyMode === 'tmproxy' && params.proxyApiKey.trim()) {
+      const url = await acquireProxy(params.proxyApiKey.trim())
+      api.setProxy(url)
+      api.setRotateHandler(async () => {
+        const nu = await rotateProxy(params.proxyApiKey.trim())
+        api.setProxy(nu)
+        if (params.fakeDevice) api.randomizeDevice() // limit -> đổi cả IP lẫn device
+      })
+    } else {
+      api.setProxy(undefined)
+      // không proxy nhưng vẫn đổi device khi bị limit (nếu bật)
+      if (params.fakeDevice) api.setRotateHandler(async () => { api.randomizeDevice() })
+    }
+
     for (const bt of params.bookingTypes) {
       if (stopFlag) break
       const label = BOOKING_TYPES[bt].label
@@ -93,10 +115,10 @@ ipcMain.on('scrape:start', async (evt, params: SearchParams) => {
           minPrice: params.minPrice,
           maxPrice: params.maxPrice,
           sort: params.sort,
-          limit: 20,
+          limit: 100,
         },
         {
-          delay: 400,
+          delay: 700,
           maxPages: params.maxPages,
           shouldStop: () => stopFlag,
           onProgress: (fetched, total) => send('scrape:progress', { label, fetched, total }),
