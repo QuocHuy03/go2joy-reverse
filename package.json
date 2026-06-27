@@ -1,0 +1,66 @@
+{
+  "name": "go2joy-scraper",
+  "version": "1.0.0",
+  "description": "Go2Joy hotel scraper - Electron + React + TypeScript",
+  "main": "./out/main/index.js",
+  "author": "Go2Joy Tools",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "start": "electron-vite build && node scripts/launch.mjs",
+    "dist": "electron-vite build && electron-builder",
+    "dist:dir": "electron-vite build && electron-builder --dir"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "electron": "^33.0.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.8"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "googleapis": "^173.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sql.js": "^1.14.1"
+  },
+  "build": {
+    "appId": "vn.go2joy.scraper",
+    "productName": "Go2Joy Scraper",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/node_modules/sql.js/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Go2Joy Scraper"
+    }
+  }
+}

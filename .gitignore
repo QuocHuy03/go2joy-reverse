@@ -1,0 +1,14 @@
+node_modules/
+out/
+release/
+__pycache__/
+*.xlsx
+*.csv
+
+# Secrets — KHÔNG commit
+demo.json
+oauth.json
+*-key.json
+*service-account*.json
+*.sqlite
+.env
