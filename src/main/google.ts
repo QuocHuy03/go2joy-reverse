@@ -221,7 +221,6 @@ async function uploadImage(drive: any, folderId: string, url: string, name: stri
 
 const UPLOAD_CONCURRENCY = 6
 const FOLDER_CONCURRENCY = 10
-const MAIN_IMG_FOLDER = 'Hình Chính' // subfolder chứa ảnh tòa chính
 
 // ---------------------------------------------------------------- Sheets
 
@@ -389,33 +388,14 @@ export async function runGoogle(
       if (hi % 5 === 0 || hi === hotels.length) onProgress('Drive: tạo folder KS', hi, hotels.length)
     })
 
-    // cột G = link folder KHÁCH SẠN (tòa chính chứa cả ảnh KS + folder phòng)
-    for (const h of hotels) {
-      const link = folderLink(h.folderId)
-      for (const r of h.rows) r['ảnh link tổng'] = link
-    }
-
-    // 2) build task: ảnh tòa chính + tạo folder phòng con + ảnh phòng (song song theo KS)
+    // 2) mỗi PHÒNG -> 1 folder con (chỉ ảnh phòng), cột G = link folder PHÒNG đó
     const tasks: { folderId: string; url: string; name: string }[] = []
     let pi = 0
     onProgress('Drive: chuẩn bị ảnh', 0, hotels.length)
     await pool(hotels, FOLDER_CONCURRENCY, async (h) => {
       const roomFolders = h.isNew ? new Map<string, string>() : await listChildFolders(drive, h.folderId)
 
-      // ảnh tòa chính -> sub folder "Hình Chính" (cho gọn)
-      if (h.hotelImages.length) {
-        let mainId = roomFolders.get(MAIN_IMG_FOLDER)
-        let mainExisting = new Set<string>()
-        if (!mainId) { mainId = await createFolder(drive, MAIN_IMG_FOLDER, h.folderId); folders += 1 }
-        else mainExisting = await listFileNames(drive, mainId)
-        h.hotelImages.forEach((u, k) => {
-          const name = imageName(u, k + 1)
-          if (mainExisting.has(name)) { skipped += 1; return }
-          tasks.push({ folderId: mainId!, url: u, name })
-        })
-      }
-
-      // mỗi PHÒNG -> 1 folder con, ảnh của phòng đó
+      // gom ảnh theo tên phòng
       const rooms = new Map<string, string[]>()
       for (const r of h.rows) {
         const rn = sanitizeFolderName(r['danh sách phòng'] || '')
@@ -424,18 +404,30 @@ export async function runGoogle(
           rooms.set(rn, (r['__roomImages'] || '').split('\n').map((s) => s.trim()).filter(Boolean))
         }
       }
+
+      // tạo/reuse folder phòng + đẩy ảnh; nhớ link folng phòng
+      const roomLink = new Map<string, string>()
       for (const [roomName, imgs] of rooms) {
-        if (!imgs.length) continue
-        let roomId = roomFolders.get(roomName)
+        const existedId = roomFolders.get(roomName)
+        let roomId = existedId
         let roomExisting = new Set<string>()
         if (!roomId) { roomId = await createFolder(drive, roomName, h.folderId); folders += 1 }
         else roomExisting = await listFileNames(drive, roomId)
+        roomLink.set(roomName, folderLink(roomId))
         imgs.forEach((u, k) => {
           const name = imageName(u, k + 1)
           if (roomExisting.has(name)) { skipped += 1; return }
           tasks.push({ folderId: roomId!, url: u, name })
         })
       }
+
+      // cột G của mỗi dòng = link folder PHÒNG của dòng đó
+      for (const r of h.rows) {
+        const rn = sanitizeFolderName(r['danh sách phòng'] || '')
+        const link = roomLink.get(rn)
+        if (link) r['ảnh link tổng'] = link
+      }
+
       pi += 1
       if (pi % 5 === 0 || pi === hotels.length) onProgress('Drive: chuẩn bị ảnh', pi, hotels.length)
     })
