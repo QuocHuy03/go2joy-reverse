@@ -395,11 +395,12 @@ export async function runGoogle(
     await pool(hotels, FOLDER_CONCURRENCY, async (h) => {
       const roomFolders = h.isNew ? new Map<string, string>() : await listChildFolders(drive, h.folderId)
 
-      // gom ảnh theo tên phòng
+      // gom ảnh theo tên phòng (bỏ qua phòng KHÔNG có tên -> tránh folder "unnamed")
       const rooms = new Map<string, string[]>()
       for (const r of h.rows) {
-        const rn = sanitizeFolderName(r['danh sách phòng'] || '')
-        if (!rn) continue
+        const raw = (r['danh sách phòng'] || '').trim()
+        if (!raw) continue
+        const rn = sanitizeFolderName(raw)
         if (!rooms.has(rn)) {
           rooms.set(rn, (r['__roomImages'] || '').split('\n').map((s) => s.trim()).filter(Boolean))
         }
@@ -437,14 +438,26 @@ export async function runGoogle(
     let fatal = ''
     await pool(tasks, UPLOAD_CONCURRENCY, async (t) => {
       if (fatal) return
-      try {
-        await uploadImage(drive, t.folderId, t.url, t.name)
+      // thử lại tối đa 3 lần (lỗi mạng tạm thời như "terminated"); fatal thì dừng luôn
+      let lastErr: any
+      let ok = false
+      for (let attempt = 0; attempt < 3 && !fatal; attempt++) {
+        try {
+          await uploadImage(drive, t.folderId, t.url, t.name)
+          ok = true
+          break
+        } catch (e: any) {
+          lastErr = e
+          if (isFatalDrive(e)) { fatal = gErr(e); break }
+          await sleep(500 * (attempt + 1))
+        }
+      }
+      if (ok) {
         uploaded += 1
-      } catch (e: any) {
+      } else {
         failed += 1
-        const msg = gErr(e)
+        const msg = gErr(lastErr)
         if (!firstError) firstError = msg
-        if (isFatalDrive(e)) fatal = msg
       }
       const seen = uploaded + failed
       if (seen % 5 === 0 || seen === total) {
