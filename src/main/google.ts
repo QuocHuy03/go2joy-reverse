@@ -205,9 +205,23 @@ function imageName(url: string, idx: number): string {
   return `${String(idx).padStart(3, '0')}.${ext}`
 }
 
+async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
+  let lastErr: any
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`tải ảnh ${res.status}`)
+      return res
+    } catch (e) {
+      lastErr = e
+      if (i < retries - 1) await sleep(800 * (i + 1))
+    }
+  }
+  throw lastErr
+}
+
 async function uploadImage(drive: any, folderId: string, url: string, name: string) {
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`tải ảnh ${res.status}`)
+  const res = await fetchWithRetry(url)
   const buf = Buffer.from(await res.arrayBuffer())
   const mime = res.headers.get('content-type') || 'image/jpeg'
   await withRetry(() =>
