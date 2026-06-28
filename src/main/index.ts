@@ -217,7 +217,7 @@ ipcMain.handle('export:xlsx', async (_e, { rows, defaultName }: ExportPayload) =
   if (canceled || !filePath) return { ok: false }
 
   const cols = SHEET_COLUMNS
-  const widths = [10, 12, 24, 32, 26, 24, 30, 12, 10, 22, 40, 28, 14, 24]
+  const widths = [10, 12, 24, 32, 26, 24, 30, 12, 10, 22, 40, 28, 14, 24, 14, 14]
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet('hotels')
   ws.columns = cols.map((c, i) => ({ header: c, key: c, width: widths[i] }))

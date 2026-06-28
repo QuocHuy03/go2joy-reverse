@@ -360,6 +360,8 @@ export function mapRoomRow(
     'chính sách nhận - trả phòng': buildPolicy(d),
     'sđt chủ': room.hotelPhone || extractPhone(d.description, desc),
     'airbnb': '',
+    'lat': hotel.latitude != null ? String(hotel.latitude) : '',
+    'lng': hotel.longitude != null ? String(hotel.longitude) : '',
     // dữ liệu ẩn cho Drive (không ghi ra sheet — sheet chỉ dùng SHEET_COLUMNS)
     '__hotelSn': String(hotel.sn || ''),
     '__hotelImages': buildImages(d).join('\n'),
@@ -394,6 +396,8 @@ export function mapRow(
     'chính sách nhận - trả phòng': buildPolicy(d),
     'sđt chủ': extractPhone(d.description, desc),
     'airbnb': '',
+    'lat': hotel.latitude != null ? String(hotel.latitude) : '',
+    'lng': hotel.longitude != null ? String(hotel.longitude) : '',
     '__hotelSn': String(hotel.sn || ''),
     '__hotelImages': buildImages(d).join('\n'),
     '__roomImages': '',

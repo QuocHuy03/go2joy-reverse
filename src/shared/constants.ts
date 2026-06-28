@@ -17,10 +17,10 @@ export const SHEET_COLUMNS = [
   'tỉnh', 'loại thuê', 'tên ks', 'địa chỉ', 'link',
   'danh sách phòng', 'ảnh link tổng', 'giá', 'combo giờ',
   'tiện ích', 'giới thiệu', 'chính sách nhận - trả phòng',
-  'sđt chủ', 'airbnb',
+  'sđt chủ', 'airbnb', 'lat', 'lng',
 ] as const
 
-/** Cột hiển thị trong bảng UI (gọn, chuyên nghiệp) — dữ liệu vẫn giữ đủ 14 cột. */
+/** Cột hiển thị trong bảng UI (gọn, chuyên nghiệp) — dữ liệu vẫn giữ đủ 16 cột. */
 export const DISPLAY_COLUMNS = [
-  'loại thuê', 'tên ks', 'giá', 'combo giờ', 'địa chỉ', 'sđt chủ',
+  'loại thuê', 'tên ks', 'giá', 'combo giờ', 'địa chỉ', 'sđt chủ', 'lat', 'lng',
 ] as const
