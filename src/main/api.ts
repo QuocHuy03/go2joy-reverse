@@ -48,6 +48,9 @@ function headers(): Record<string, string> {
     'sec-ch-ua': `"Google Chrome";v="${major}", "Chromium";v="${major}", "Not)A;Brand";v="24"`,
     'sec-ch-ua-mobile': '?0',
     'sec-ch-ua-platform': _userAgent.includes('Mac') ? '"macOS"' : '"Windows"',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-site',
     'user-agent': _userAgent,
   }
 }
@@ -193,6 +196,8 @@ interface ListSearch {
 }
 
 function buildListPayload(s: ListSearch, page: number) {
+  // bookingType 3 (theo ngày): API không nhận date/time, phải để rỗng
+  const isDaily = s.bookingType === 3
   return {
     provinceSn: s.provinceSn,
     minPrice: s.minPrice,
@@ -208,10 +213,10 @@ function buildListPayload(s: ListSearch, page: number) {
     hasFilter: true,
     limit: s.limit,
     page,
-    endTime: s.endTime,
-    startTime: s.startTime,
-    checkInDatePlan: s.checkinDate,
-    endDate: s.endDate || s.checkinDate,
+    endTime: isDaily ? '' : s.endTime,
+    startTime: isDaily ? '' : s.startTime,
+    checkInDatePlan: isDaily ? '' : s.checkinDate,
+    endDate: isDaily ? '' : (s.endDate || s.checkinDate),
     nationwide: false,
     distance: null,
     isShareLocation: false,
@@ -271,14 +276,15 @@ export async function getRoomTypeList(
   bookingType: BookingType,
   q: RoomQuery,
 ): Promise<any[]> {
+  const isDaily = bookingType === 3
   try {
     const body = await apiGet('roomType/getRoomTypeList', {
       hotelSn,
       bookingType,
-      startDate: q.startDate,
-      startTime: q.startTime,
-      endDate: q.endDate,
-      endTime: q.endTime,
+      startDate: isDaily ? '' : q.startDate,
+      startTime: isDaily ? '' : q.startTime,
+      endDate: isDaily ? '' : q.endDate,
+      endTime: isDaily ? '' : q.endTime,
     })
     if (body.code !== 1) return []
     return body.data?.roomTypeList || []

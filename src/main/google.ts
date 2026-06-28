@@ -443,6 +443,23 @@ export async function runGoogle(
         if (link) r['ảnh link tổng'] = link
       }
 
+      // dòng không có tên phòng -> upload ảnh thẳng vào folder KS, gán link KS
+      const noRoomRows = h.rows.filter((r) => !(r['danh sách phòng'] || '').trim())
+      if (noRoomRows.length > 0) {
+        const imgStr = noRoomRows[0]['__hotelImages'] || noRoomRows[0]['__roomImages'] || ''
+        const imgs = imgStr.split('\n').map((s) => s.trim()).filter(Boolean)
+        if (imgs.length > 0) {
+          const hotelExisting = h.isNew ? new Set<string>() : await listFileNames(drive, h.folderId)
+          imgs.forEach((u, k) => {
+            const name = imageName(u, k + 1)
+            if (hotelExisting.has(name)) { skipped += 1; return }
+            tasks.push({ folderId: h.folderId, url: u, name })
+          })
+        }
+        const hLink = folderLink(h.folderId)
+        for (const r of noRoomRows) r['ảnh link tổng'] = hLink
+      }
+
       pi += 1
       if (pi % 5 === 0 || pi === hotels.length) onProgress('Drive: chuẩn bị ảnh', pi, hotels.length)
     })
